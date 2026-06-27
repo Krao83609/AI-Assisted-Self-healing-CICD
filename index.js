@@ -1,4 +1,4 @@
-const express = require("express");
+/* const express = require("express");
 const app = express();
 
 const PORT = process.env.PORT || 3000;
@@ -14,4 +14,6 @@ if (require.main === module) {
   });
 }
 
-module.exports = app;
+module.exports = app; */
+
+console.log('Server is running from hell at port 007 with superNatural Powers')
