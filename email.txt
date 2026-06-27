@@ -1,0 +1,39 @@
+**AI Self-Healing CI/CD Notification**
+
+Hello,
+
+The AI Self-Healing CI/CD pipeline has successfully analyzed a failed GitHub Actions workflow, identified the root cause, generated an automated fix, and created a Pull Request for review.
+
+### Repository Information
+
+**Repository:** {{ $('Github-workflow-failure').first().json.body.repo }}
+
+**Original Branch:** {{ $('Github-workflow-failure').first().json.body.branch }}
+
+**AI Fix Branch:** {{ $('Extract Ai Response').first().json.branch_name }}
+
+### Generated Fix
+
+**Pull Request Title:**
+{{ $('Extract Ai Response').first().json.pr_title }}
+
+**Summary:**
+{{ $('Extract Ai Response').first().json.pr_body }}
+
+### Review Required
+
+Please review the AI-generated changes, validate the proposed fix, and merge the Pull Request if appropriate.
+
+**Repository:**
+https://github.com/{{ $('Github-workflow-failure').first().json.body.repo }}
+
+**Pull Requests:**
+https://github.com/{{ $('Github-workflow-failure').first().json.body.repo }}/pulls
+
+---
+
+This fix was generated automatically by the AI Self-Healing CI/CD Pipeline using GitHub Actions, n8n, and Google Gemini.
+
+Thank you,
+
+**AI Self-Healing CI/CD System**
