@@ -14,5 +14,8 @@ n8n is a powerful, source-available workflow automation platform used to connect
 
 <img width="1721" height="190" alt="image" src="https://github.com/user-attachments/assets/5747bf87-d297-41fa-9d32-b2931de0dcd9" />
 
+<img width="1920" height="1080" alt="Screenshot (15)" src="https://github.com/user-attachments/assets/85f214d2-d421-451a-8280-f2670aeeac9b" />
+
+
 Gmail Notification: <img width="1608" height="461" alt="image" src="https://github.com/user-attachments/assets/c4d21739-415b-4599-9415-d23346fbd6bc" />
 
