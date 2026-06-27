@@ -16,4 +16,4 @@ if (require.main === module) {
 
 module.exports = app; */
 
-nsole.log('Server is running from hell at port 007 with superNatural Powers')
+sole.log('Server is running from hell at port 007 with superNatural Powers')
