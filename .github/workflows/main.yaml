@@ -28,9 +28,9 @@ jobs:
       - name: Trigger n8n webhook
         run: | 
           curl -X POST "${{ secrets.N8N_URL_WEBHOOK }}" \
-          - H "Content-type: applications/json" \
-          - H "x-webhook-secret: ${{ secrets.N8N_SECRET_WEBHOOK}}" \
-          - d '{
+          -H "Content-type: application/json" \
+          -H "x-webhook-secret: ${{ secrets.N8N_SECRET_WEBHOOK}}" \
+          -d '{
               "run-id": "${{ github.run_id }}",
               "repo": "${{ github.repository }}",
               "branch": "${{ github.ref_name}}",
