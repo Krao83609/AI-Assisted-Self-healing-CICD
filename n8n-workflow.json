@@ -1,0 +1,458 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fe4923d4-64fb-4ff3-a73e-f42ee65559de",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "responseData": "noData",
+        "options": {}
+      },
+      "id": "147b528b-758d-4c7c-b9df-1665ba8fcf93",
+      "name": "Github-workflow-failure",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "fe4923d4-64fb-4ff3-a73e-f42ee65559de",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "p2vv7U85j2FKWmAQ",
+          "name": "N8N_SECRET_WEBHOOK"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.body.repo }}/actions/runs/{{ $json.body['run-id'] }}/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "id": "e89676e4-68ff-417c-a414-daa206c40e21",
+      "name": "Fetch logs gh workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        192,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $('Github-workflow-failure').first().json.body.repo }}/compare/{{ $('Github-workflow-failure').first().json.body.commit }}~1...{{ $('Github-workflow-failure').first().json.body.commit }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "id": "a3c9f45b-ec8e-4caf-b6a2-2061527db980",
+      "name": "Fetch modified files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Fetch modified files').first().json.files[0].raw_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "id": "23347782-17d1-4238-93d5-6a802f79bec8",
+      "name": "Fetch file content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Github-workflow-failure').first().json.body;\nconst jobs = $('Fetch logs gh workflow').first().json.jobs || [];\n\nconst failedJob = jobs.find(j => j.conclusion === 'failure') || jobs[0];\nconst failedSteps = failedJob?.steps?.filter(s => s.conclusion === 'failure') || [];\n\nconst stepDetails = failedSteps.map(s => `\n  Step: ${s.name}\n  Status: ${s.conclusion}\n  Started: ${s.started_at}\n  Completed: ${s.completed_at}\n`).join('\\n');\n\nconst commitData = $('Fetch modified files').first().json;\nconst changedFiles = commitData.files || [];\n\nconst codeExtensions = ['.js', '.ts', '.py', '.json', '.yml', '.yaml', '.sh', '.java', '.go', '.rb'];\nconst relevantFiles = changedFiles.filter(f => \n  codeExtensions.some(ext => f.filename.endsWith(ext)) && \n  f.status !== 'removed'\n);\n\nconst fileContent = $('Fetch file content').first().json;\nconst actualCode = typeof fileContent === 'string' \n  ? fileContent \n  : (fileContent.data || fileContent.content || JSON.stringify(fileContent));\n\nlet filesSection = '';\n\nif (relevantFiles.length > 0) {\n  for (const file of relevantFiles) {\n    const ext = file.filename.split('.').pop();\n    const langMap = { \n      js: 'javascript', ts: 'typescript', py: 'python', \n      json: 'json', yml: 'yaml', yaml: 'yaml', \n      sh: 'bash', java: 'java', go: 'go', rb: 'ruby' \n    };\n    const lang = langMap[ext] || ext;\n\n    filesSection += `File: ${file.filename}\\nStatus: ${file.status}\\n\\`\\`\\`${lang}\\n${actualCode}\\n\\`\\`\\`\\n\\n`;\n  }\n} else {\n  filesSection = 'No relevant code files detected in this commit.';\n}\n\nconst prompt = `\nCI/CD Pipeline Failure Report\n==============================\nRepository: ${payload.repo}\nBranch: ${payload.branch}\nCommit: ${payload.commit}\nTriggered by: ${payload.actor}\nRun ID: ${payload.run_id}\nRun URL: https://github.com/${payload.repo}/actions/runs/${payload.run_id}\n\nFailed Job: ${failedJob?.name || 'Unknown'}\n\nFailed Steps:\n${stepDetails || 'Unknown'}\n\nAll Steps Summary:\n${failedJob?.steps?.map(s => `- ${s.name}: ${s.conclusion}`).join('\\n') || 'None'}\n\nChanged Files in This Commit (${relevantFiles.length} files):\n==============================\n${filesSection}\n==============================\n\nIMPORTANT INSTRUCTIONS:\n- The file_path must be the REAL file that needs fixing from the list above\n- The fixed_code must PRESERVE all existing working code, only fix the bug\n- Do NOT rewrite the entire file from scratch\n- Do NOT use placeholder values\n- Return ONLY valid JSON in this format:\n{\n  \"file_path\": \"actual/file/path.js\",\n  \"fixed_code\": \"complete corrected code here\",\n  \"explanation\": \"brief explanation of what was fixed\"\n}\n`;\n\nreturn { prompt };"
+      },
+      "id": "7c32fe50-cafd-43d4-bb8a-986ea273115b",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an expert DevOps engineer and Node.js developer. \n\nTASK:\nAnalyze the provided CI/CD failure logs and the source code. Identify the bug and provide a complete fix.\n\nCONSTRAINTS:\n1. Return ONLY a raw, valid JSON object. \n2. NO markdown, NO code blocks (```json), NO conversational text.\n3. The \"branch_name\" MUST be unique and specific to the fix (e.g., \"ai-fix/missing-express-init\"). DO NOT use \"main\" or \"master\".\n4. The \"fixed_code\" MUST be the entire file content with the fix applied.\n\nJSON SCHEMA:\n{\n  \"branch_name\": \"ai-fix/brief-description-of-fix\",\n  \"file_path\": \"the/actual/path/of/the/file/fixed.js\",\n  \"repo\": \"Krao83609/Self-healing-CICD\",\n  \"fixed_code\": \"entire updated file content\",\n  \"pr_title\": \"fix: brief title of the bug fix\",\n  \"pr_body\": \"## AI Auto-Fix\\n\\n**Root Cause Identified:**\\n[Brief description]\\n\\n**Changes Applied:**\\n[List of changes]\"\n}",
+              "role": "model"
+            },
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "773d6fa4-fe82-478f-9526-2b6596a22124",
+      "name": "Message a model",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        0
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "HfA2TRRVpZ2xXvc0",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gemini response\nconst ai = $input.first().json;\n\n// Extract the JSON string\nconst raw = ai.content.parts[0].text;\n\n// Remove markdown if Gemini added it\nconst cleaned = raw.replace(/```json|```/g, \"\").trim();\n\n// Parse JSON\nconst parsed = JSON.parse(cleaned);\n\n// Webhook payload\nconst payload = $(\"Github-workflow-failure\").first().json.body;\n\nreturn {\n  json: {\n    branch_name: parsed.branch_name,\n    file_path: parsed.file_path,\n    fixed_code: parsed.fixed_code,\n    base64_content: Buffer.from(parsed.fixed_code).toString(\"base64\"),\n    pr_title: parsed.pr_title,\n    pr_body: parsed.pr_body,\n\n    repo: payload.repo,\n    branch: payload.branch,\n    commit: payload.commit,\n    actor: payload.actor\n  }\n};"
+      },
+      "id": "2f5c30f7-4208-4546-9eb0-e6e39d45e05e",
+      "name": "Extract Ai Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/git/refs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ref\": \"refs/heads/{{ $json.branch_name }}\",\n  \"sha\": \"{{ $json.commit }}\"\n}",
+        "options": {}
+      },
+      "id": "eb0328fd-13d2-4956-ae01-942f68bb727d",
+      "name": "Create Branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $('Extract Ai Response').item.json.repo }}/contents/{{ $('Extract Ai Response').item.json.file_path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1776,
+        0
+      ],
+      "id": "551400aa-0ad2-4cdf-ac0a-1173aa91d379",
+      "name": "get file sha",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $('Extract Ai Response').item.json.repo }}/contents/{{ $('Extract Ai Response').item.json.file_path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $('Extract Ai Response').item.json.pr_title }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('Extract Ai Response').item.json.base64_content }}"
+            },
+            {
+              "name": "sha",
+              "value": "={{ $json.sha }}"
+            },
+            {
+              "name": "branch",
+              "value": "={{ $('Extract Ai Response').item.json.branch_name }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1984,
+        0
+      ],
+      "id": "27fdbc65-78ec-477a-8fe2-3f544ed3de1b",
+      "name": "Push Fix File",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $('Extract Ai Response').item.json.repo }}/pulls",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $('Extract Ai Response').item.json.pr_title }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $('Extract Ai Response').item.json.pr_body }}"
+            },
+            {
+              "name": "head",
+              "value": "={{ $('Extract Ai Response').item.json.branch_name }}"
+            },
+            {
+              "name": "base",
+              "value": "main"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2192,
+        0
+      ],
+      "id": "5a2b0da2-860a-4a04-bf67-5dc1b49e6eaa",
+      "name": "Open Pull Request",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hYWFGbvZfKAOKrkR",
+          "name": "GITHUB PAT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "krao83609@gmail.com",
+        "subject": "GithubActions Workflow failure: Resolved and submitted a PR by AI Assistance",
+        "emailType": "text",
+        "message": "= Hello, The AI Self-Healing Pipeline has automatically detected and fixed a CI/CD failure in your repository.  Repository: {{ $('Github-workflow-failure').first().json.body.repo }} Branch: {{ $('Extract Ai Response').first().json.branch_name }} Fix Title: {{ $('Extract Ai Response').first().json.pr_title }}  Pull Request has been created. Please review and merge: https://github.com/{{ $('Github-workflow-failure').first().json.body.repo }}/pulls Best regards,  AI Self-Healing System",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        0
+      ],
+      "id": "cd22932f-6769-418c-ad75-a330b0b49382",
+      "name": "Send a message",
+      "webhookId": "a226c38b-943d-4553-bfb7-422d87876baf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "VKAbruGLde0zFZxa",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Github-workflow-failure": {
+      "main": [
+        [
+          {
+            "node": "Fetch logs gh workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch logs gh workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch modified files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch modified files": {
+      "main": [
+        [
+          {
+            "node": "Fetch file content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch file content": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Extract Ai Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Ai Response": {
+      "main": [
+        [
+          {
+            "node": "Create Branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Branch": {
+      "main": [
+        [
+          {
+            "node": "get file sha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get file sha": {
+      "main": [
+        [
+          {
+            "node": "Push Fix File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push Fix File": {
+      "main": [
+        [
+          {
+            "node": "Open Pull Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open Pull Request": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0f8d50f3-8b07-427c-9608-928202789a42",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "49e9a3bd708b72021f8a1de86342a61c6a306b671b8e80f81d6939203eeb9401"
+  },
+  "nodeGroups": [],
+  "id": "sXDlToEO4pr11ali",
+  "tags": []
+}
