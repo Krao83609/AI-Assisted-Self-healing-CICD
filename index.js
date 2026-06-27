@@ -1,14 +1,17 @@
-// Import the express module
-const express = require('express');
+const express = require("express");
 const app = express();
-const port = 3000;
 
-// Define a route for the home page
-app.get('/', (req, res) => {
-  res.send('Hello World! Your index.js project is running successfully.');
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Hello World! Your index.js project is running successfully.");
 });
 
-// Start the server and listen on port 3000
-app.listen(port, () => {
-  console.log(`Server is happily running at http://localhost:${port}`);
-});
+// Only start the server when this file is executed directly
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server is happily running at http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
